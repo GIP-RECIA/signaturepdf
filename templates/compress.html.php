@@ -11,6 +11,7 @@
         <i class="bi bi-exclamation-triangle"></i> <?php echo _("Site not functional without JavaScript enabled");  ?>
     </div>
 </noscript>
+<?php include('components/extended-uportal-header.html.php'); ?>
 <div id="page-upload">
     <?php include('components/navtab.html.php'); ?>
     <div class="px-4 py-4 text-center fullpage">

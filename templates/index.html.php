@@ -11,6 +11,7 @@
         <i class="bi bi-exclamation-triangle"></i> <?php echo _("Site not functional without JavaScript enabled");  ?>
     </div>
 </noscript>
+<?php include('components/extended-uportal-header.html.php'); ?>
 <?php include('components/navtab.html.php'); ?>
 <div class="container pt-4 fullpage">
     <p class="lead text-center mb-2"><img src="logo.svg" style="height: 200px;" class="text-center" /></p>

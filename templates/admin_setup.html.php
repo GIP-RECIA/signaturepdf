@@ -6,6 +6,7 @@
     <meta name="robots" content="noindex">
 </head>
 <body>
+    <?php include('components/extended-uportal-header.html.php'); ?>
     <?php include('components/navtab.html.php'); ?>
     <div class="container fullpage">
     <div class="row">
