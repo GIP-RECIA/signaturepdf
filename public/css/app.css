@@ -215,23 +215,28 @@ html.rtl .file-list-checkbox {
 
 /* modifs GIP recia */
 body {
-  position: relative;
-  margin-top: var(--recia-header-height, 68px);
-  height: calc(100vh - var(--recia-header-height, 68px));
-  overflow-x: hidden;
+    position: relative;
+    margin-top: var(--recia-header-height, 68px);
+    height: calc(100vh - var(--recia-header-height, 68px));
+    overflow-x: hidden;
+    --bs-offcanvas-zindex: 1000;
 }
 
-.offcanvas,
 #color-picker {
-  position: absolute;
+    position: absolute;
+}
+
+#sidebarTools {
+    position: absolute;
+    z-index: 1000;
 }
 
 .vh-100 {
-  height: calc(100vh - var(--recia-header-height, 68px)) !important;
+    height: calc(100vh - var(--recia-header-height, 68px)) !important;
 }
 
 .position-fixed {
-  position: absolute !important;
+    position: absolute !important;
 }
 
 .fullpage {
