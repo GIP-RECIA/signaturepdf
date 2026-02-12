@@ -231,20 +231,23 @@ body {
     --bs-offcanvas-zindex: 1000;
 }
 
-#color-picker {
-    top: calc(var(--app-header-height) + 14px);
-}
-
-#sidebarTools {
-    top: var(--app-header-height);
-}
-
 #top_bar,
 #sidebarTools {
     z-index: 1000 !important;
 }
 
+.position-fixed,
+#sidebarTools,
+#color-picker {
+    position: absolute !important;
+}
+
+.position-fixed.bottom-0 {
+    position: fixed !important;
+}
+
 .position-fixed.top-0 {
+    position: fixed !important;
     top: var(--app-header-height) !important;
 }
 
