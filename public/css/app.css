@@ -237,9 +237,12 @@ body {
 }
 
 .position-fixed,
-#sidebarTools,
 #color-picker {
     position: absolute !important;
+}
+
+#sidebarTools {
+    top: var(--app-header-height);
 }
 
 .position-fixed.bottom-0 {
