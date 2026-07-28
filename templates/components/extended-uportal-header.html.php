@@ -8,6 +8,7 @@ $dom = array(
     'pdf-online.touraine-eschool.fr' => 'www.touraine-eschool.fr',
     'pdf-online.colleges41.fr' => 'ent.colleges41.fr',
     'pdf-online.mon-e-college.loiret.fr' => 'mon-e-college.loiret.fr',
+    'pdf-online.entkapreunion.re' => 'lycees.entkapreunion.re',
     'pdf-online.lycees.test.recia.dev' => 'lycees.test.recia.dev',
     'pdf-online.clg18.test.recia.dev' => 'clg18.test.recia.dev',
     'pdf-online.clg28.test.recia.dev' => 'clg28.test.recia.dev',
@@ -15,6 +16,7 @@ $dom = array(
     'pdf-online.clg37.test.recia.dev' => 'clg37.test.recia.dev',
     'pdf-online.clg41.test.recia.dev' => 'clg41.test.recia.dev',
     'pdf-online.clg45.test.recia.dev' => 'clg45.test.recia.dev',
+    'pdf-online.lycees.test.entkapreunion.dev' => 'lycees.test.entkapreunion.dev',
 );
 $domain = $dom[$_SERVER['HTTP_HOST']] ?? null;
 ?>
