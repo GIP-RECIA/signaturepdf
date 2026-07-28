@@ -16,11 +16,14 @@ $dom = array(
     'pdf-online.clg41.test.recia.dev' => 'clg41.test.recia.dev',
     'pdf-online.clg45.test.recia.dev' => 'clg45.test.recia.dev',
 );
+$domain = $dom[$_SERVER['HTTP_HOST']] ?? null;
 ?>
 
 <extended-uportal-header
     fname="PDFOnline"
-    domain="<?php echo $dom[$_SERVER['HTTP_HOST']]; ?>"
+    <?php if ($domain !== null): ?>
+        domain="<?= htmlspecialchars($domain, ENT_QUOTES, 'UTF-8') ?>"
+    <?php endif; ?>
     template-api-path="/commun/portal_template_api.tpl.json"
 >
 </extended-uportal-header>
