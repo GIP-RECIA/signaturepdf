@@ -1,3 +1,5 @@
+let isDavPath = false;
+
 async function handleFileChange() {
     document.querySelector('#error_message').classList.add('d-none');
     document.querySelector('#card_resultat').classList.add('d-none');
@@ -15,24 +17,37 @@ async function handleFileChange() {
     const dropdownCompressBtn = document.getElementById('dropdownMenuReference');
 
     if (fileInput.files.length > 0) {
+        compressBtn.closest('.btn-group').classList.remove('opacity-25');
         compressBtn.disabled = false;
         dropdownCompressBtn.disabled = false;
     } else {
+        compressBtn.closest('.btn-group').classList.add('opacity-25');
         compressBtn.disabled = true;
         dropdownCompressBtn.disabled = true;
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
+    document.querySelector('#input_pdf_upload').addEventListener('change', function(e) {
+        handleFileChange();
+    })
     document.getElementById('form_compress').addEventListener('submit', async function(e) {
         document.querySelector('#error_message').classList.add('d-none');
         document.querySelector('#card_resultat').classList.add('d-none');
         document.querySelector('#compressBtn').classList.add('btn-primary');
         document.querySelector('#compressBtn').classList.remove('btn-outline-primary');
-        startProcessingMode(document.getElementById('compressBtn'));
+        let submitButton = document.getElementById('compressBtn');
+        if(e.submitter.value == "ocr") {
+            submitButton = document.getElementById('ocrButton');
+        }
+        startProcessingMode(submitButton);
         const form = e.target;
         const formData = new FormData(form);
         formData.set(e.submitter.name, e.submitter.value);
+
+        if(e.submitter.value == "ocr") {
+            form.action = e.submitter.dataset.action;
+        }
 
         fetch(form.action, { method: form.method, body: formData })
         .then(async function(response) {
@@ -43,6 +58,7 @@ document.addEventListener('DOMContentLoaded', function () {
               let filename = decodeURI(response.headers.get('content-disposition').replace('attachment; filename=', ''));
               let blob = await response.blob();
 
+              document.querySelector('#card_resultat h6').classList.remove('d-none');
               document.querySelector('#compressBtn').classList.remove('btn-primary');
               document.querySelector('#compressBtn').classList.add('btn-outline-primary');
               document.querySelector('#uploaded_size').innerText = document.querySelector('#uploaded_size').dataset.templateText.replace("%s", convertOctet2MegoOctet(document.getElementById('input_pdf_upload').files[0].size));
@@ -50,17 +66,30 @@ document.addEventListener('DOMContentLoaded', function () {
               document.querySelector('#pourcentage_compressed').innerText = document.querySelector('#pourcentage_compressed').dataset.templateText.replace("%s", 100 - Math.round((blob.size * 100)/ document.getElementById('input_pdf_upload').files[0].size));
               document.querySelector('#card_resultat').classList.remove('d-none');
 
+              if(e.submitter.value == "ocr") {
+                  document.querySelector('#card_resultat h6').classList.add('d-none');
+                  document.querySelector('#pourcentage_compressed').innerText = 'PDF with OCR'
+              }
+
               let dataTransfer = new DataTransfer();
               dataTransfer.items.add(new File([blob], filename, {
                   type: 'application/pdf'
               }));
               document.getElementById('input_pdf_compressed').files = dataTransfer.files;
               document.querySelector('#downloadBtn').focus();
+
+              if(isDavPath) {
+                document.querySelector('#downloadBtn').classList.add('d-none');
+                document.querySelector('#save_local').classList.remove('d-none');
+              }
           } else {
               document.querySelector('#error_message').classList.remove('d-none');
               document.querySelector('#error_message').innerText = await response.text();
+              if(e.submitter.value == "ocr") {
+                  document.querySelector('#error_message').innerText = "The PDF already contains selectable text"
+              }
           }
-          endProcessingMode(document.getElementById('compressBtn'));
+          endProcessingMode(submitButton);
         })
 
         e.preventDefault();
@@ -70,4 +99,26 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('downloadBtn').addEventListener('click', async function(e) {
         await download(document.getElementById('input_pdf_compressed').files[0], document.getElementById('input_pdf_compressed').files[0].name);
     });
+    document.getElementById('save_local').addEventListener('click', async function(e) {
+        startProcessingMode(this)
+        if(window.location.hash && window.location.hash.match(/^\#dav/)) {
+            let headers = new Headers();
+            let davToken = await requestDavToken();
+            headers.set('Authorization', 'Basic ' + btoa(davToken));
+            await fetch(window.location.hash.replace('#dav:', '').replace(/\.pdf$/, '_compress.pdf'), {
+              method: 'PUT',
+              body: document.getElementById('input_pdf_compressed').files[0],
+              headers: headers
+            });
+        }
+        endProcessingMode(this)
+        document.getElementById('btn_exit').click();
+    });
+    if(window.location.hash && window.location.hash.match(/^\#dav:/)) {
+        isDavPath = true;
+        document.getElementById('btn_exit').classList.remove('d-none');
+        await loadFileFromUrl(window.location.hash.replace(/^\#dav:/, ''));
+        document.getElementById('input_pdf_upload').dispatchEvent(new Event("change"));
+    }
+
 })

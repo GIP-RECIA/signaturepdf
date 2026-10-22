@@ -25,6 +25,8 @@ let nbPDF = 0;
 let pages = [];
 let formats = [];
 let pdfRenderTasks = [];
+let isLocalPath = false;
+let isDavPath = false;
 
 async function loadPDF(pdfBlob, filename, pdfIndex) {
     let url = await URL.createObjectURL(pdfBlob);
@@ -185,6 +187,7 @@ async function loadPDF(pdfBlob, filename, pdfIndex) {
                 });
                 canvasContainer.querySelector('.btn-download').addEventListener('click', async function(e) {
                     e.stopPropagation();
+                    this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
                     startProcessingMode(canvasContainer.querySelector('.btn-download'));
                     let container = this.parentNode;
                     let pageValue = container.querySelector('.checkbox-page').value;
@@ -588,6 +591,11 @@ function updateGlobalState() {
     document.querySelector('#bottom_bar_action_selection').classList.add('d-none');
     document.querySelector('#save').classList.remove('d-none');
     document.querySelector('#save_select').classList.add('d-none');
+    document.getElementById('save_local').classList.add('d-none');
+
+    if(isLocalPath || isDavPath) {
+        document.getElementById('save_local').classList.remove('d-none');
+    }
 
     if(isSelectionMode()) {
         document.querySelector('#container_btn_select .card-header span').innerText = document.querySelectorAll('.canvas-container .input-select:checked').length;
@@ -711,20 +719,32 @@ async function save(order) {
         pdf.addPage(pdfPage);
     }
 
-    if(document.querySelector('#select_formatting').value == "booklet") {
+    if(document.querySelector('#select_formatting').value == "booklet" || document.querySelector('#select_formatting').value == "20pagesbooklet") {
         const orgaPages = [];
-        const nbPages = Math.ceil(pdf.getPages().length / 4) * 2;
+
+        const pdfBooklet = await window['PDFLib'].PDFDocument.create();
 
         const pageWidth = pdf.getPages()[0].getWidth();
         const pageHeight = pdf.getPages()[0].getHeight();
+        const nbTotalPages = pdf.getPages().length;
+        let tailleBooklet = nbTotalPages;
+        if (document.querySelector('#select_formatting').value == "20pagesbooklet") {
+            tailleBooklet = 20;
+        }
 
-        const pdfBooklet = await window['PDFLib'].PDFDocument.create();
-        for(let i = nbPages; i > 0; i--) {
-            let pages = [i, 2 * nbPages - i + 1];
-            if(i % 2) {
-                orgaPages.push(pages.reverse());
-            } else {
-                orgaPages.push(pages);
+        for (let nbBooklet = 0 ; tailleBooklet * nbBooklet < nbTotalPages ; nbBooklet++ ) {
+            const middlePage = Math.ceil(tailleBooklet / 4) * 2 + tailleBooklet * nbBooklet;
+            //separation page for multi booklets
+            if (nbBooklet) {
+                orgaPages.push([nbTotalPages + 1, nbTotalPages + 1]);
+            }
+            for(let i = middlePage; i > tailleBooklet * nbBooklet; i--) {
+                let pages = [i, 2 * middlePage - i + 1];
+                if(i % 2) {
+                    orgaPages.push(pages.reverse());
+                } else {
+                    orgaPages.push(pages);
+                }
             }
         }
         for(pages of orgaPages.reverse()) {
@@ -738,6 +758,19 @@ async function save(order) {
 
     cleanPDF(pdf);
     let newPDF = new Blob([await pdf.save()], {type: "application/pdf"});
+
+    if(isDavPath) {
+        let headers = new Headers();
+        let davToken = await requestDavToken();
+        headers.set('Authorization', 'Basic ' + btoa(davToken));
+        fetch(isDavPath.replace(/\.pdf$/, '_organized.pdf'), {
+          method: 'PUT',
+          body: newPDF,
+          headers: headers
+        });
+        return ;
+    }
+
     await download(newPDF, filename+".pdf");
     await storeFileInCache(newPDF, filename+'.pdf');
 }
@@ -917,22 +950,25 @@ function getPDFTags(node) {
 
 function createEventsListener() {
     document.getElementById('save_select_mobile').addEventListener('click', async function(event) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         event.preventDefault();
-        startProcessingMode(document.getElementById('save_select_mobile'));
+        startProcessingMode(this);
         await saveAll();
-        endProcessingMode(document.getElementById('save_select_mobile'));
+        endProcessingMode(this);
     });
     document.getElementById('btn_extract_select').addEventListener('click', async function(event) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         event.preventDefault();
-        startProcessingMode(document.getElementById('btn_extract_select'));
+        startProcessingMode(this);
         await saveAll();
-        endProcessingMode(document.getElementById('btn_extract_select'));
+        endProcessingMode(this);
     });
     document.getElementById('save_select').addEventListener('click', async function(event) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         event.preventDefault();
-        startProcessingMode(document.getElementById('save_select'));
+        startProcessingMode(this);
         await saveAll();
-        endProcessingMode(document.getElementById('save_select'));
+        endProcessingMode(this);
     });
     document.getElementById('save').addEventListener('click', async function(e) {
         e.preventDefault();
@@ -941,11 +977,19 @@ function createEventsListener() {
         endProcessingMode(this);
     });
     document.getElementById('save_mobile').addEventListener('click', async function(event) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         event.preventDefault();
         startProcessingMode(this);
         await saveAll();
         endProcessingMode(this);
     });
+    document.getElementById('save_local').addEventListener('click', async function (e) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
+        event.preventDefault();
+        startProcessingMode(this);
+        await saveAll()
+        endProcessingMode(this);
+    })
     document.getElementById('input_pdf_upload_2').addEventListener('change', async function(event) {
         await uploadAndLoadPDF(this);
         this.value = '';
@@ -1039,23 +1083,9 @@ function createEventsListener() {
 async function uploadFromUrl(url) {
     showLoading('Download')
     history.replaceState({}, '', '/organization');
-    var response = await fetch(url);
-    if(response.status != 200) {
-        return;
-    }
-    var pdfBlob = await response.blob();
-
-    if(pdfBlob.type != 'application/pdf' && pdfBlob.type != 'application/octet-stream') {
-        return;
-    }
-    let dataTransfer = new DataTransfer();
-    let filename = url.replace(/^.*\//, '');
-    dataTransfer.items.add(new File([pdfBlob], filename, {
-        type: 'application/pdf'
-    }));
-    document.getElementById('input_pdf_upload').files = dataTransfer.files;
+    await loadFileFromUrl(url)
     document.getElementById('input_pdf_upload').dispatchEvent(new Event("change"));
-    endLoading('Download')
+    endLoading()
 }
 
 async function pageUpload() {
@@ -1087,6 +1117,10 @@ document.addEventListener('DOMContentLoaded', function () {
         let hashUrl = window.location.hash.replace('#booklet', '').replace(/^\#/, '');
         pageUpload();
         uploadFromUrl(hashUrl);
+    } else if(window.location.hash && window.location.hash.match(/^\#dav:/)) {
+        isDavPath = window.location.hash.replace('#dav:', '');
+        pageUpload();
+        uploadFromUrl(isDavPath);
     } else if (window.location.hash && canUseCache()) {
         pageUpload()
         loadFileFromCache('/pdf/'+window.location.hash.replace(/^\#/, ''));

@@ -3,7 +3,10 @@ let pdfRenderTasks = [];
 let pdffile = null
 let deletedMetadata = [];
 let isLocalPath = false;
+let isDavPath = false;
 let hasModifications = false;
+let sizeOfText = 0;
+let pdf = null;
 
 function responsiveDisplay() {
     let menu = document.getElementById('sidebarTools');
@@ -30,16 +33,19 @@ async function loadPDF(pdfBlob) {
     pdffile = pdfBlob
 
     const loadingTask = pdfjsLib.getDocument(url);
-    const pdf = await loadingTask.promise;
+    pdf = await loadingTask.promise;
+
     const metadata = await pdf.getMetadata()
     const attachments = await pdf.getAttachments();
+
+    resetMetadatas();
 
     for(fieldKey in defaultFields) {
         addMetadata(fieldKey, null, defaultFields[fieldKey]['type'], false);
     }
 
     for(metaKey in metadata.info) {
-        if(metaKey == "Custom" || metaKey == "PDFFormatVersion" || metaKey.match(/^Is/) || metaKey == "Trapped") {
+        if(metaKey == "Custom" || metaKey == "PDFFormatVersion" || metaKey.match(/^Is/) || metaKey == "Trapped" || metaKey == "Language" || metaKey == "EncryptFilterName") {
             continue;
         }
         addMetadata(metaKey, metadata.info[metaKey], "text", false);
@@ -87,6 +93,10 @@ async function loadPDF(pdfBlob) {
         })
     }
 
+    document.querySelector('#container-pages').innerHTML = null;
+    document.querySelectorAll('.hiddenCanvasElement').forEach(function(item) {
+        item.remove();
+    });
     for(let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++ ) {
         pdf.getPage(pageNumber).then(function(page) {
             let pageIndex = (page.pageNumber - 1);
@@ -101,6 +111,39 @@ async function loadPDF(pdfBlob) {
         document.getElementById('input_metadata_key').focus();
     }
 
+    let itemNumber = 0;
+    let pdfHtml = "";
+    let pdfText = "";
+    for(let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++ ) {
+        let page = await pdf.getPage(pageNumber);
+        let textContent = await page.getTextContent();
+        let previousItem = null;
+        for(let item of textContent.items) {
+            if(!item.str) {
+                continue;
+            }
+            if(previousItem && Math.abs(item.transform[5] - previousItem.transform[5]) < (item.transform[3] / 2)) {
+                pdfText += " ";
+                pdfHtml += " ";
+            } else if(previousItem) {
+                pdfText += "\n";
+                pdfHtml += "<br />";
+            }
+
+            pdfText += item.str;
+            pdfHtml += "<span data-id='"+itemNumber+"'>"+item.str+"</span>";
+
+            previousItem = item;
+            itemNumber++;
+        }
+    }
+    pdfText = pdfText.replace(/[ ]+/g, " ");
+    document.querySelector('#tab-text #pdf_text').innerHTML = pdfHtml;
+    document.querySelector('#tab-text #pdf_text_container').classList.toggle('d-none', !document.querySelector('#tab-text #pdf_text').innerText);
+    document.querySelector('#tab-text #pdf_notext').classList.toggle('d-none', document.querySelector('#tab-text #pdf_text').innerText);
+
+    const blobText = new Blob([pdfText])
+    document.querySelector('#nav-link-text span.badge').innerText = (Math.round(blobText.size / 1024 * 100) / 100) + ' ko';
     endLoading();
 
     return loadingTask;
@@ -152,6 +195,7 @@ async function pageRender(pageIndex) {
     viewport: viewport,
   });
 
+
   pdfRenderTasks[pageIndex].promise.then(function () {
     return page.getTextContent()
   }).then(function (textContent) {
@@ -185,6 +229,24 @@ window.addEventListener('message', function(event) {
         setIsChanged(true);
     }
 });
+
+function updateMetadataInfos() {
+    let nb = 0;
+    document.querySelectorAll('.input-metadata input').forEach(function(item) {
+        if(item.value) {
+            nb++;
+        }
+    });
+    document.querySelector('#nav-link-metadata span.badge span').innerText = nb;
+}
+
+function resetMetadatas() {
+    const metadataContainer = document.getElementById('form-metadata-container')
+
+    while (metadataContainer.firstChild) {
+        metadataContainer.removeChild(metadataContainer.firstChild);
+    }
+}
 
 function addMetadata(key, value, type, focus, forceCreation = false) {
     if (! forceCreation) {
@@ -227,6 +289,8 @@ function addMetadata(key, value, type, focus, forceCreation = false) {
         input.focus();
     }
 
+    updateMetadataInfos();
+
     return input
 }
 
@@ -237,6 +301,7 @@ function deleteMetadata(el) {
     const label = input.querySelector('label').innerText
     deletedMetadata.push(label)
     input.remove()
+    updateMetadataInfos();
 }
 
 function setIsChanged(changed) {
@@ -281,6 +346,19 @@ async function save() {
         });
         return ;
     }
+
+    if(window.location.hash && window.location.hash.match(/^\#dav/)) {
+        let headers = new Headers();
+        let davToken = await requestDavToken();
+        headers.set('Authorization', 'Basic ' + btoa(davToken));
+        fetch(window.location.hash.replace('#dav:', ''), {
+          method: 'PUT',
+          body: newPDF,
+          headers: headers
+        });
+        return ;
+    }
+
     download(newPDF, document.getElementById('input_pdf_upload').files[0].name)
 }
 
@@ -322,20 +400,103 @@ function createEventsListener() {
         setTimeout(function() {endProcessingMode(document.getElementById('save'))}, 500);
     })
     document.getElementById('save_mobile').addEventListener('click', async function (e) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         startProcessingMode(this);
         await save()
         setTimeout(function() {endProcessingMode(document.getElementById('save_mobile'))}, 500);
     })
     document.getElementById('save_local').addEventListener('click', async function (e) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         startProcessingMode(this);
         await save()
         setTimeout(function() {endProcessingMode(document.getElementById('save_local')); setIsChanged(false);}, 500);
     })
     document.getElementById('save_mobile_local').addEventListener('click', async function (e) {
+        this.dataset.loadingText = document.getElementById('save').dataset.loadingText;
         startProcessingMode(this);
         await save()
         setTimeout(function() {endProcessingMode(document.getElementById('save_mobile_local')); setIsChanged(false);}, 500);
     })
+    if(document.getElementById('form_ocr')) {
+        document.getElementById('form_ocr').addEventListener('submit', async function (e) {
+            const form = e.target;
+            this.querySelector('input[type="file"]').files = document.getElementById('input_pdf_upload').files;
+            const formData = new FormData(form);
+            const btn = e.submitter;
+            startProcessingMode(btn);
+            fetch(form.action, { method: form.method, body: formData })
+            .then(async function(response) {
+                if(!response.ok) {
+                    endProcessingMode(btn);
+                    return;
+                }
+                let pdfBlob = await response.blob();
+                let dataTransfer = new DataTransfer();
+                dataTransfer.items.add(new File([pdfBlob], "test.pdf", {
+                    type: 'application/pdf'
+                }));
+                document.getElementById('input_pdf_upload').files = dataTransfer.files;
+                await loadPDF(document.getElementById('input_pdf_upload').files[0]).catch(function (reason) {
+                    console.error(reason);
+                });
+
+                document.querySelector('#container-pages').classList.add('text-highlight');
+                setTimeout(function() { document.querySelector('#container-pages').classList.remove('text-highlight'); }, 1000)
+
+                endProcessingMode(btn);
+            })
+
+            e.preventDefault();
+
+            return false;
+        });
+    }
+
+    document.getElementById('btn_copy_text').addEventListener('click', function(e) {
+        navigator.clipboard.writeText(document.querySelector("#pdf_text").innerText);
+        let button = this;
+        button.querySelector('i.bi').classList.remove('bi-copy');
+        button.querySelector('i.bi').classList.add('bi-clipboard-check');
+        setTimeout(function() { button.querySelector('i.bi').classList.remove('bi-clipboard-check'); button.querySelector('i.bi').classList.add('bi-copy'); }, 2000);
+    })
+
+    document.getElementById('pdf_text').addEventListener('mouseover', function(e) {
+        if(e.target.nodeName != 'SPAN') {
+            return;
+        }
+        followText(e.target, '#pdf_text span', '#container-pages .textLayer span',  false);
+    });
+
+    document.getElementById('pdf_text').addEventListener('mouseout', function(e) {
+        if(e.target.nodeName != 'SPAN') {
+            return;
+        }
+        followText(e.target, '#pdf_text span', '#container-pages .textLayer span',  true);
+    });
+
+    document.getElementById('container-pages').addEventListener('mouseover', function(e) {
+        if(e.target.nodeName != 'SPAN') {
+            return;
+        }
+        followText(e.target, '#container-pages .textLayer span', '#pdf_text span', false);
+    });
+
+    document.getElementById('container-pages').addEventListener('mouseout', function(e) {
+        if(e.target.nodeName != 'SPAN') {
+            return;
+        }
+        followText(e.target, '#container-pages .textLayer span', '#pdf_text span', true);
+    });
+}
+
+function followText(element, selectorFrom, selectorTo, hide) {
+    const indexSpan = Array.from(document.querySelectorAll(selectorFrom)).indexOf(element);
+    if(!document.querySelectorAll(selectorTo)[indexSpan]) {
+        return;
+    }
+    let spanPDF = document.querySelectorAll(selectorTo)[indexSpan];
+    spanPDF.classList.toggle('active', !hide);
+    spanPDF.scrollIntoView({block: "center", inline: "center"});
 }
 
 async function pageUpload() {
@@ -348,12 +509,12 @@ async function pageUpload() {
         window.location.reload();
     })
     document.getElementById('input_pdf_upload').addEventListener('change', async function(event) {
+        pageMetadata(null);
         if(await canUseCache()) {
             const file = document.getElementById('input_pdf_upload').files[0]
             storeFileInCache(file, file.name);
             history.pushState({}, '', `${REVERSE_PROXY_URL ? '/': ''}${REVERSE_PROXY_URL}/metadata#${file.name}`);
         }
-        pageMetadata(null);
     });
 }
 
@@ -361,14 +522,14 @@ async function pageMetadata(url) {
     document.querySelector('body').classList.add('bg-light');
     document.getElementById('page-upload').classList.add('d-none');
     document.getElementById('page-metadata').classList.remove('d-none');
-    if(isLocalPath) {
+    if(isLocalPath || isDavPath) {
         document.getElementById('save').classList.add('d-none');
         document.getElementById('save_mobile').classList.add('d-none');
         document.getElementById('save_local').classList.remove('d-none');
         document.getElementById('save_mobile_local').classList.remove('d-none');
     }
 
-    if(url && url.match(/^cache:\/\//)) {
+    if(url && url.match(/^cache:\/\//) && !isDavPath) {
         await loadFileFromCache(url.replace(/^cache:\/\//, ''));
     } else if (url) {
         await loadFileFromUrl(url);
@@ -389,9 +550,12 @@ async function pageMetadata(url) {
 };
 
 
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
     if(window.location.hash && window.location.hash.match(/^\#http/)) {
         pageMetadata(window.location.hash.replace(/^\#/, ''));
+    } else if(window.location.hash && window.location.hash.match(/^\#dav:/)) {
+        isDavPath = true;
+        pageMetadata(window.location.hash.replace(/^\#dav:/, ''));
     } else if(window.location.hash && window.location.hash.match(/^\#local/)) {
         isLocalPath = true;
         pageMetadata(window.location.origin + "/api/file/get?path=" + window.location.hash.replace(/^\#local:/, ''), '/metadata', window.location.hash.replace(/^\#/, ''));

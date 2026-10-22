@@ -1,4 +1,6 @@
 const modalLoading = new bootstrap.Modal('#modalLoading')
+let davTokenReceived = null;
+const isIframe = window.parent !== window;
 
 function is_mobile() {
     return !(window.getComputedStyle(document.getElementById('is_mobile')).display === "none");
@@ -61,7 +63,12 @@ async function loadFileFromCache(cacheUrl, pageUrl) {
 }
 
 async function storeFileInCache(file, filename, cacheStore = 'pdf') {
-    let cache = await caches.open(cacheStore);
+    let cache = null;
+    try {
+        cache = await caches.open(cacheStore);
+    } catch(error) {
+        return;
+    }
     let response = new Response(file, { "status" : 200, "statusText" : "OK" });
     await cache.put('/pdf/'+filename, response);
 }
@@ -69,7 +76,13 @@ async function storeFileInCache(file, filename, cacheStore = 'pdf') {
 async function loadFileFromUrl(url, pageUrl, local = null) {
     showLoading('Download')
     history.replaceState({}, '', pageUrl);
-    let response = await fetch(url);
+    let headers = new Headers();
+    if(isDavPath) {
+        let davToken = await requestDavToken();
+        console.log(davToken);
+        headers.set('Authorization', 'Basic ' + btoa(davToken));
+    }
+    let response = await fetch(url, { headers: headers, cache: "no-cache" });
     if(response.status != 200) {
         return;
     }
@@ -100,22 +113,37 @@ async function loadFileFromUrl(url, pageUrl, local = null) {
     endLoading()
 }
 
+async function requestDavToken(url) {
+    if(!isIframe) {
+        return;
+    }
+    window.parent.postMessage({action: 'getDavToken'}, '*');
+    while(!davTokenReceived) {
+        await new Promise(r => setTimeout(r, 100));
+    }
+    let davToken = davTokenReceived;
+    davTokenReceived = null;
+    return davToken;
+}
+
 function startProcessingMode(btn) {
     btn.disabled = true;
-    btn.querySelector('.bi').classList.add('position-relative');
-    btn.querySelector('.bi').insertAdjacentHTML('afterbegin', '<span class="spinner-grow spinner-grow-sm position-absolute top-50 start-50 translate-middle"></span>');
+    //btn.querySelector('.bi').classList.add('position-relative');
+    //btn.querySelector('.bi').insertAdjacentHTML('afterbegin', '<span class="spinner-grow spinner-grow-sm position-absolute top-50 start-50 translate-middle"></span>');
     if(btn.parentNode.querySelector('.dropdown-toggle')) {
         btn.parentNode.querySelector('.dropdown-toggle').disabled = true;
     }
+    showLoading(btn.dataset.loadingText ? btn.dataset.loadingText : btn.innerText);
 }
 
 function endProcessingMode(btn) {
-    btn.querySelector('.spinner-grow').remove();
-    btn.querySelector('.bi').classList.remove('position-relative');
+    //btn.querySelector('.spinner-grow').remove();
+    //btn.querySelector('.bi').classList.remove('position-relative');
     btn.disabled = false;
     if(btn.parentNode.querySelector('.dropdown-toggle')) {
         btn.parentNode.querySelector('.dropdown-toggle').disabled = false;
     }
+    endLoading();
 }
 
 function showLoading(message) {
@@ -123,7 +151,7 @@ function showLoading(message) {
     modalLoading.show();
 }
 
-function endLoading(message) {
+function endLoading() {
     modalLoading.hide();
 }
 
@@ -221,8 +249,7 @@ function getLetter(i) {
 async function convertInputFileImagesToPDF(inputFile) {
     let dataTransfer = new DataTransfer();
     for (let i = 0; i < inputFile.files.length; i++) {
-        console.log(inputFile.files[i].type);
-        if(["image/png", "image/jpeg"].includes(inputFile.files[i].type)) {
+        if(["image/png", "image/jpeg", "image/jpg"].includes(inputFile.files[i].type)) {
             dataTransfer.items.add(await imageToPdf(inputFile.files[i]));
         } else {
             dataTransfer.items.add(inputFile.files[i]);
@@ -237,7 +264,7 @@ async function imageToPdf(file) {
   let image = null;
   if(file.type == "image/png") {
       image = await pdfDoc.embedPng(imageBytes);
-  } else if(file.type == "image/jpeg") {
+  } else if(file.type == "image/jpeg" || file.type == "image/jpg") {
       image = await pdfDoc.embedJpg(imageBytes);
   }
 
@@ -247,12 +274,27 @@ async function imageToPdf(file) {
 
   const { width, height } = image.scale(1);
 
-  const page = pdfDoc.addPage([width, height]);
+
+  let isRotated = false;
+  let orientation = 0;
+  try {
+      switch (EXIF.readFromBinaryFile(imageBytes).Orientation) {
+        case 3: orientation = 180; break;
+        case 6: orientation = 90; break;
+        case 8: orientation=270; break;
+      }
+  } catch (e) {
+
+  }
+  isRotated = (orientation == 90 || orientation == 270)
+  const page = pdfDoc.addPage([isRotated ? height : width, isRotated ? width : height]);
+
   page.drawImage(image, {
     x: 0,
-    y: 0,
-    width,
-    height,
+    y: isRotated ? width : 0,
+    width: width,
+    height: height,
+    rotate: isRotated && orientation ? window.PDFLib.degrees(360 - orientation) : window.PDFLib.degrees(0),
   });
 
   const pdfBytes = await pdfDoc.save();
@@ -276,4 +318,21 @@ function debounce(callback, delay){
             callback.apply(context, args);
         }, delay)
     }
+}
+
+window.addEventListener('message', function(event) {
+    if (event.data.action === 'davOpenFile' && event.data.key == "token") {
+        davTokenReceived = event.data.value
+        console.log(event.data)
+    }
+});
+
+if(document.getElementById('btn_exit')) {
+    document.getElementById('btn_exit').addEventListener('click', function(e) {
+        if(isIframe) {
+            window.parent.postMessage({action: 'exit'}, '*');
+            e.preventDefault();
+            return;
+        }
+    });
 }

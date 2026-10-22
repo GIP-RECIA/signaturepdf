@@ -14,9 +14,9 @@
 <?php include('components/extended-uportal-header.html.php'); ?>
 <?php include('components/navtab.html.php'); ?>
 <div class="container pt-4 fullpage">
-    <p class="lead text-center mb-2"><img src="logo.svg" style="height: 200px;" class="text-center" /></p>
-    <h1 class="text-center h4 d-lg-none">Signature PDF</h1>
-    <p class="lead mt-3 text-center mb-0"><?php echo _("Free open-source software for signing and manipulating PDFs") ?></p>
+    <p class="lead text-center mb-2"><img src="logo.svg" alt="Logo de signature pdf" style="height: 160px;" class="text-center" /></p>
+    <h1 class="text-center lead opacity-50 d-lg-none mb-4">Signature PDF</h1>
+    <p class="fs-5 mt-3 text-center mb-0"><?php echo _("Free open-source software for signing and manipulating PDFs"); ?></p>
     <div class="row justify-content-center mt-4">
         <div class="col-xxl-5 col-xl-6 col-lg-7 col-md-10">
             <div class="position-relative">
@@ -62,6 +62,7 @@
           <a tabindex="-1" href="<?php echo $REVERSE_PROXY_URL; ?>/metadata" class="card-header text-body-secondary link-underline link-underline-opacity-0"><?php echo _("Metadata") ?></a>
           <div class="list-group list-group-flush">
             <a href="<?php echo $REVERSE_PROXY_URL; ?>/metadata" class="list-group-item list-group-item-action"><i class="bi bi-tags"></i> <?php echo _("Add, edit, or remove metadata from a PDF") ?></a>
+            <a href="<?php echo $REVERSE_PROXY_URL; ?>/ocr" class="list-group-item list-group-item-action"><i class="bi bi-upc-scan"></i> <?php echo _("OCR détection de textes dans les images contenu dans le PDF") ?></a>
             </div>
         </div>
     </div>

@@ -9,7 +9,7 @@ Free web software for signing (alone or with others), organizing (merge, sort, r
 List of instances where you can use this software:
 - [pdf.24eme.fr](https://pdf.24eme.fr) (by [24eme](https://www.24eme.fr/services-libres/))
 - [pdf.libreon.fr](https://pdf.libreon.fr) (by [Libreon](https://libreon.fr/))
-- [pdf.hostux.net](https://pdf.hostux.net) (by [Hostux](https://hostux.network/))
+- [signature.pdf.hostux.net](https://signature.pdf.hostux.net) (by [Hostux](https://hostux.network/))
 - [pdf.nebulae.co](https://pdf.nebulae.co) (by [Nebulae](https://nebulae.co/))
 - [pdf.kaosx.ovh](https://pdf.kaosx.ovh)
 - [pdf.ti-nuage.fr](https://pdf.ti-nuage.fr) (by [Ti Nuage](https://www.ti-nuage.fr/))
@@ -23,6 +23,8 @@ List of instances where you can use this software:
 - [signaturepdf.linux07.fr](https://signaturepdf.linux07.fr) (by [Linux07](https://linux07.fr/))
 - [signpdf.blablalinux.be](https://signpdf.blablalinux.be) (by [Blabla Linux](https://blablalinux.be/))
 - [framapdf.org](https://framapdf.org/home) (by [Framasoft](https://framasoft.org))
+- [pdf.s2s.video](https://pdf.s2s.video) (by [s2s](https://www.s2s.video))
+
 
 _Feel free to add yours through an issue or a pull request._
 

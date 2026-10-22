@@ -22,6 +22,14 @@ let nblayers = null;
 let hasModifications = false;
 let currentTextScale = 1;
 const defaultScale = 1.5;
+let customText = '';
+let isLocalPath = false;
+let isDavPath = false;
+
+fabric.Object.prototype.controls.mtr.x = 0;
+fabric.Object.prototype.controls.mtr.y = 0.5;      // bas de l'objet
+fabric.Object.prototype.controls.mtr.offsetY = 30; // 30px sous l'objet
+fabric.Object.prototype.controls.mtr.withConnection = true;
 
 async function loadPDF(pdfBlob) {
     let filename = pdfBlob.name;
@@ -187,6 +195,7 @@ async function loadPDF(pdfBlob) {
               canvasEdition.on("selection:cleared", function(event) {
                   toolBox.reset()
               });
+              canvasEdition.on("object:modified", storeCustomText);
               canvasEditions.push(canvasEdition);
             });
         }
@@ -227,6 +236,24 @@ function responsiveDisplay() {
 function storeCollections() {
     localStorage.setItem('svgCollections', JSON.stringify(svgCollections));
 };
+
+function storeCustomText(e) {
+    if (! (e.target instanceof fabric.IText)) {
+        return;
+    }
+
+    if (! e.target.text || e.transform || e.target.text === trad['Text to modify']) {
+        return;
+    }
+
+    let storedStrings = JSON.parse(localStorage.getItem('storedStrings'))
+    if (storedStrings === null) {
+        storedStrings = []
+    }
+    storedStrings.push(e.target.text.trim())
+    storedStrings = [...new Set(storedStrings)] // array_unique version js
+    localStorage.setItem('storedStrings', JSON.stringify(storedStrings))
+}
 
 function getSvgItem(svg) {
     for (index in svgCollections) {
@@ -436,22 +463,36 @@ function displaysSVG() {
     });
 };
 
-function uploadSVG(formData) {
+function uploadSVG(formData, convert = true) {
     document.getElementById('btn_modal_ajouter').setAttribute('disabled', 'disabled');
     document.getElementById('btn_modal_ajouter_spinner').classList.remove('d-none');
     document.getElementById('btn_modal_ajouter_check').classList.add('d-none');
 
-    let xhr = new XMLHttpRequest();
-
-    xhr.open( 'POST', document.getElementById('form-image-upload').action, true );
-    xhr.onreadystatechange = function () {
-        var svgImage = svgToDataUrl(trimSvgWhitespace(this.responseText));
-        document.getElementById('img-upload').src = svgImage;
+    function updateImage(image) {
+        document.getElementById('img-upload').src = image;
         document.getElementById('img-upload').classList.remove("d-none");
         document.getElementById('btn_modal_ajouter').removeAttribute('disabled');
         document.getElementById('btn_modal_ajouter_spinner').classList.add('d-none');
         document.getElementById('btn_modal_ajouter_check').classList.remove('d-none');
         document.getElementById('btn_modal_ajouter').focus();
+    }
+
+    if (convert === false) {
+        const f = formData.get('file')
+
+        if (f.type === 'image/png') {
+            const fr = new FileReader()
+            fr.onload = (e) => { updateImage(e.target.result) }
+            fr.readAsDataURL(f)
+            return;
+        }
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open( 'POST', document.getElementById('form-image-upload').action, true );
+    xhr.onreadystatechange = function () {
+        const svgImage = svgToDataUrl(trimSvgWhitespace(this.responseText));
+        updateImage(svgImage)
     };
     xhr.send( formData );
 };
@@ -491,6 +532,42 @@ function addObjectInCanvas(canvas, item) {
 
     return canvas.add(item);
 };
+
+function initFilenameChange() {
+    const open = document.querySelector('#text_document_name')
+    open.addEventListener('mouseup', openDialogDocumentName)
+
+    function openDialogDocumentName(e) {
+        if (window.getSelection().toString()) {
+            return;
+        }
+
+        if (e.target.closest('.bi')) {
+            return;
+        }
+
+        if (this.classList.contains('editable') === false) {
+            return
+        }
+
+        const oldname = open.querySelector('span').innerText
+
+        let newname = prompt(this.dataset.promptlabel, oldname)
+
+        if (newname === null || newname === "") { return }
+
+        newname = newname.endsWith('.pdf') ? newname : newname + '.pdf'
+        open.title = newname
+        open.querySelector('span').innerText = newname
+
+        // Changement du fichier pour le partage
+        const oldfile = document.getElementById('input_pdf_share').files[0]
+        const dt = new DataTransfer()
+        dt.items.add(new File([oldfile], newname, {type: oldfile.type}))
+        document.getElementById('input_pdf_share').files = dt.files
+        dt.items.clear()
+    }
+}
 
 function updateWatermark() {
     if (document.querySelector('input[name=watermark]') === null) {
@@ -552,6 +629,14 @@ function setIsChanged(changed) {
         document.getElementById('btn_share').classList.toggle('btn-outline-dark', !changed);
         document.getElementById('btn_share').classList.toggle('btn-outline-secondary', changed);
     }
+
+    if(document.getElementById('save_local')) {
+        document.getElementById('save_local').disabled = !changed;
+        document.getElementById('save_local').classList.toggle('btn-primary', changed);
+        document.getElementById('save_local').classList.toggle('btn-outline-primary', !changed);
+    }
+    // document.getElementById('save_mobile_local').classList.toggle('btn-primary', changed);
+    // document.getElementById('save_mobile_local').classList.toggle('btn-outline-primary', !changed);
 }
 
 function createAndAddSvgInCanvas(canvas, item, x, y, height = null) {
@@ -562,7 +647,10 @@ function createAndAddSvgInCanvas(canvas, item, x, y, height = null) {
     }
 
     if(item == 'text') {
-        let textbox = new fabric.Textbox(trad['Text to modify'], {
+        const text = (customText) ? customText : trad['Text to modify']
+        customText = ''
+
+        let textbox = new fabric.Textbox(text, {
         left: x,
         top: y - 20,
         fontSize: 20,
@@ -625,6 +713,23 @@ function createAndAddSvgInCanvas(canvas, item, x, y, height = null) {
 
         updateFlatten();
         return;
+    }
+
+    if (item.startsWith('data:image/png')) {
+        fabric.Image.fromURL(item, function(img) {
+            img.scaleToHeight(height);
+
+            if(img.getScaledWidth() > 200) {
+                img.scaleToWidth(200);
+            }
+
+            img.top = y - (img.getScaledHeight() / 2);
+            img.left = x - (img.getScaledWidth() / 2);
+
+            addObjectInCanvas(canvas, img);
+        });
+
+        return
     }
 
     fabric.loadSVGFromURL(item, function(objects, options) {
@@ -857,10 +962,19 @@ function createEventsListener() {
         }
     })
 
+    document.getElementById('switch-vectorized').addEventListener('change', function() {
+        const input = document.getElementById('input-image-upload')
+        if (input.files.length) {
+            input.dispatchEvent(new Event('change'))
+        }
+    })
+
     document.getElementById('input-image-upload').addEventListener('change', function(event) {
-        let data = new FormData();
+        const switchVectorized = document.getElementById('switch-vectorized')
+        const data = new FormData();
         data.append('file', document.getElementById('input-image-upload').files[0]);
-        uploadSVG(data);
+
+        uploadSVG(data, switchVectorized.checked);
         event.preventDefault();
     });
 
@@ -885,6 +999,72 @@ function createEventsListener() {
         updateWatermark();
     });
 
+    const modalMoreOptions = document.getElementById('modal-text-more-options')
+    modalMoreOptions.addEventListener('click', function (e) {
+        const checkbox = document.querySelector('#label_svg_text')
+        const el = e.target.closest('.btn-custom-text')
+        const inlimit = e.target.closest('.custom-text-list')
+
+        if (el && inlimit) {
+            if (document.getElementById(checkbox.htmlFor).checked) {
+                checkbox.click() // sans ça, désélectionne l'input text de la sidebar
+            }
+
+            // si element sélectionné, alors on remplace le texte
+            const activeCanvas = canvasEditions.find((c) => c.getActiveObject())
+
+            if (activeCanvas) {
+                const activeText = activeCanvas.getActiveObject()
+                activeText.text = el.querySelector('span.custom-text').innerText.trim()
+                activeCanvas.discardActiveObject()
+                activeCanvas.requestRenderAll()
+            } else {
+                customText = el.querySelector('span.custom-text').innerText.trim()
+            }
+
+            const openModal = el.closest('.modal.show')
+            const modalInstance = bootstrap.Modal.getInstance(openModal);
+            modalInstance.hide()
+
+            checkbox.click()
+        }
+    })
+    modalMoreOptions.addEventListener('show.bs.modal', function (e) {
+        // on construit la liste de texte custom du local storage
+
+        const modal = e.target
+
+        const newItemText = function(iconClass, textString) {
+            const div = document.createElement('div')
+                  div.classList.add("d-grid", "gap-2", "mb-2", "list-item-add", "btn-custom-text")
+            const span = document.createElement('span')
+                  span.classList.add("btn", "btn-outline-secondary", "text-black", "text-start")
+            const icon = document.createElement('i')
+                  icon.classList.add("bi", iconClass, "me-1")
+            const text = document.createElement('span')
+                  text.classList.add('custom-text')
+                  text.innerText = textString
+            span.appendChild(icon)
+            span.append(" ")
+            span.appendChild(text)
+            div.appendChild(span)
+
+            return div;
+        }
+
+        const customListDate = modal.querySelector('#text-list-date');
+        while (customListDate.firstChild) { customListDate.removeChild(customListDate.lastChild) }
+        const todayDate = new Date();
+        customListDate.appendChild(newItemText('bi-calendar-date', todayDate.toLocaleDateString(window.navigator.language)))
+        customListDate.appendChild(newItemText('bi-calendar-date', todayDate.toLocaleDateString(window.navigator.language , {weekday: "long", year: "numeric", month: "long", day: "numeric"})))
+
+        const customListHistory = modal.querySelector('#text-list-history')
+        while (customListHistory.firstChild) { customListHistory.removeChild(customListHistory.lastChild) }
+        (JSON.parse(localStorage.getItem('storedStrings')) || []).forEach(function (el) {
+            customListHistory.appendChild(newItemText('bi-clock-history', el))
+        })
+    })
+
     document.querySelector('#watermark-color-picker')?.addEventListener('change', function (e) {
         document.querySelector('input[name=watermark]').dispatchEvent(new Event("change"));
     });
@@ -904,40 +1084,17 @@ function createEventsListener() {
         document.getElementById('save').addEventListener('click', async function(event) {
             if(!pdfHash) {
                 event.preventDefault()
+                startProcessingMode(this)
             }
 
-            let previousScale = currentScale;
-            if(currentScale != defaultScale) {
-                resizePDF(defaultScale)
-                while(!renderComplete) { }
-            }
-            let dataTransfer = new DataTransfer();
-            canvasEditions.forEach(function(canvasEdition, index) {
-                dataTransfer.items.add(new File([canvasEdition.toSVG()], index+'.svg', {
-                    type: 'image/svg+xml'
-                }));
-            })
-            document.getElementById('input_svg').files = dataTransfer.files;
-            if(previousScale != currentScale) {
-                clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(resizePDF(previousScale), 100);
-            }
+            const blob = await save(this);
 
             if(!pdfHash) {
-                startProcessingMode(this)
-                const formData = new FormData(this.form)
-                const response = await fetch(this.form.action, {
-                    method: "POST",
-                    body: formData
-                })
-
-                const blob = await response.blob()
-                await download(blob, formData.get('pdf').name.replace(/\.pdf$/, '_signe.pdf'))
-                await storeFileInCache(blob, formData.get('pdf').name)
+                await download(blob, document.querySelector('#text_document_name').title.replace(/\.pdf$/, '_signe.pdf'))
+                await storeFileInCache(blob, document.getElementById('input_pdf').files[0].name)
                 endProcessingMode(this)
+                hasModifications = false;
             }
-
-            hasModifications = false;
         });
     }
 
@@ -970,6 +1127,29 @@ function createEventsListener() {
         event.preventDefault();
         return false;
     });
+
+    if(document.getElementById('save_local')) {
+        document.getElementById('save_local').addEventListener('click', async function (event) {
+            startProcessingMode(this)
+            let newPDF = await save(this);
+            if(window.location.hash && window.location.hash.match(/^\#dav/)) {
+                let headers = new Headers();
+                let davToken = await requestDavToken();
+                headers.set('Authorization', 'Basic ' + btoa(davToken));
+                await fetch(window.location.hash.replace('#dav:', '').replace(/\.pdf$/, '_signe.pdf'), {
+                  method: 'PUT',
+                  body: newPDF,
+                  headers: headers
+                });
+            }
+
+            endProcessingMode(this)
+            setIsChanged(false)
+
+            event.preventDefault();
+            return false;
+        })
+    }
 
     document.getElementById('btn-svg-pdf-delete').addEventListener('click', function(event) {
         deleteActiveObject();
@@ -1085,6 +1265,11 @@ function createEventsListener() {
     penColorPicker.addEventListener('input', function (e) {
         e.preventDefault()
         storePenColor(penColorPicker.value)
+        if(activeCanvas && activeCanvas.getActiveObject()) {
+            activeCanvas.getActiveObject()
+            activeCanvas.getActiveObject().set({ fill: penColorPicker.value })
+            activeCanvas.requestRenderAll()
+        }
     })
 
     document.getElementById('color-picker').addEventListener('click', function(event) {
@@ -1152,6 +1337,38 @@ function runCron() {
     xhr.send();
 }
 
+async function save() {
+    let previousScale = currentScale;
+    if(currentScale != defaultScale) {
+        resizePDF(defaultScale)
+        while(!renderComplete) { }
+    }
+    let dataTransfer = new DataTransfer();
+    canvasEditions.forEach(function(canvasEdition, index) {
+        dataTransfer.items.add(new File([canvasEdition.toSVG()], index+'.svg', {
+            type: 'image/svg+xml'
+        }));
+    })
+    document.getElementById('input_svg').files = dataTransfer.files;
+    if(previousScale != currentScale) {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(resizePDF(previousScale), 100);
+    }
+
+    if(!pdfHash) {
+        const form = document.getElementById('form_pdf');
+        const formData = new FormData(form)
+        const response = await fetch(form.action, {
+            method: "POST",
+            body: formData
+        })
+        const blob = await response.blob()
+        return blob;
+    }
+
+    hasModifications = false;
+}
+
 async function pageUpload() {
     document.querySelector('body').classList.remove('bg-light');
     document.getElementById('input_pdf_upload').value = '';
@@ -1203,6 +1420,12 @@ async function pageSignature(url) {
     menuOffcanvas = new bootstrap.Offcanvas(menu);
     forceAddLock = !is_mobile();
     addLock = forceAddLock;
+    if(isLocalPath || isDavPath) {
+        document.getElementById('save').classList.add('d-none');
+        //document.getElementById('save_mobile').classList.add('d-none');
+        document.getElementById('save_local').classList.remove('d-none');
+        //document.getElementById('save_mobile_local').classList.remove('d-none');
+    }
 
     if(localStorage.getItem('svgCollections')) {
         svgCollections = JSON.parse(localStorage.getItem('svgCollections'));
@@ -1216,7 +1439,7 @@ async function pageSignature(url) {
         fontCaveat = font;
     });
 
-    if(url && url.match(/^cache:\/\//)) {
+    if(url && url.match(/^cache:\/\//) && !isDavPath) {
         await loadFileFromCache(url.replace(/^cache:\/\//, ''));
     } else if (url) {
         await loadFileFromUrl(url);
@@ -1236,6 +1459,7 @@ async function pageSignature(url) {
     }
 
     storePenColor(penColor)
+    initFilenameChange()
     createSignaturePad();
     responsiveDisplay();
     displaysSVG();
@@ -1258,6 +1482,9 @@ document.addEventListener('DOMContentLoaded', function () {
         pageSignature('/signature/'+pdfHash+'/pdf');
     } else if(window.location.hash && window.location.hash.match(/^\#http/)) {
         pageSignature(window.location.hash.replace(/^\#/, ''));
+    } else if(window.location.hash && window.location.hash.match(/^\#dav:/)) {
+        isDavPath = true;
+        pageSignature(window.location.hash.replace(/^\#dav:/, ''));
     } else if(window.location.hash) {
         pageSignature('cache:///pdf/'+window.location.hash.replace(/^\#/, ''));
     } else {
@@ -1287,7 +1514,7 @@ const toolBox = (function () {
 
     const _elToolbox = document.createElement('div')
           _elToolbox.id = 'toolbox'
-          _elToolbox.classList.add('position-absolute', 'border', 'p-1', 'bg-body-secondary', 'shadow-sm', 'ms-3', 'mt-3', 'd-none', 'd-md-block', 'user-select-none')
+          _elToolbox.classList.add('position-absolute', 'border', 'bg-light', 'rounded', 'shadow-sm', 'd-none', 'd-md-block', 'user-select-none')
           _elToolbox.style['z-index'] = 1030
           _elToolbox.style.width = 'max-content'
 
@@ -1316,7 +1543,7 @@ const toolBox = (function () {
     function _changeColor() {
         const _colorpicker = document.createElement('input')
               _colorpicker.setAttribute('type', 'color')
-              _colorpicker.value = penColor
+              _colorpicker.value = _elSelected.fill;
 
         _colorpicker.addEventListener('input', function (e) {
             _elSelected.set({ fill: e.target.value })
@@ -1379,7 +1606,8 @@ const toolBox = (function () {
             - +window.getComputedStyle(_elToolbox).getPropertyValue("margin-left").replace('px', '')
         ) + 'px'
         _elToolbox.style.top = (
-            Math.max(...yCoords)             // on sélectionne le coin le plus bas
+            Math.min(...yCoords)             // on sélectionne le coin le plus bas
+            - _elToolbox.clientHeight - 10       // hauteur de la toolbox
             + _elSelected.canvas._offset.top // hauteur du canvas dans le viewport
             + container.scrollTop            // haut du container
         ) + 'px'
