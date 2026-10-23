@@ -323,5 +323,6 @@ body {
 }
 
 .fullpage {
-    min-height: calc(100vh - calc(var(--app-header-height) + 95px));
+    /* on reprend la .fullpage d'origine auquel on retire également le header ENT */
+    min-height: calc(100vh - calc(var(--app-header-height) + 134px));
 }
