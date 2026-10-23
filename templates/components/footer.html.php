@@ -4,3 +4,4 @@
         - <a title="Button visible just for ip authorized" class="small <?php if($activeTab === 'admin'): ?>active<?php endif; ?>" href="<?php echo $REVERSE_PROXY_URL; ?>/administration"><i class="bi bi-wrench-adjustable"></i> <span class="d-none d-sm-inline"><?php echo _("Administration panel"); ?></span></a>
     <?php endif; ?>
 </footer>
+<?php require_once('r-footer.html.php'); ?>
