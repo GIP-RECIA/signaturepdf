@@ -12,7 +12,7 @@
         <i class="bi bi-exclamation-triangle"></i> <?php echo _("Site not functional without JavaScript enabled");  ?>
     </div>
 </noscript>
-<?php include('components/extended-uportal-header.html.php'); ?>
+<?php include('components/r-header.html.php'); ?>
 <div id="page-upload">
     <?php include('components/navtab.html.php'); ?>
     <div class="px-3 py-3 text-center fullpage">
